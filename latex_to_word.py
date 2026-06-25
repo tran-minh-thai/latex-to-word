@@ -682,12 +682,17 @@ def _center_table(m):
     tbl = m.group(0)
     if "@@ALGTBL@@" in tbl:                      # algorithm body
         tbl = tbl.replace("@@ALGTBL@@", "")
-        # A cell that contains ONLY a formula can be wrapped by pandoc in a centered
-        # display equation (m:oMathPara) - this happens on some pandoc builds (e.g.
-        # amd64 on Colab) and makes the first, formula-only line look centered.
-        # Unwrap it to inline math so it follows the cell's left alignment.
+        # Defensive: some pandoc builds wrap a formula-only cell in a display
+        # equation (m:oMathPara). Unwrap it to inline math.
         tbl = re.sub(r"<m:oMathPara>(?:<m:oMathParaPr>.*?</m:oMathParaPr>)?"
                      r"(<m:oMath>.*?</m:oMath>)</m:oMathPara>", r"\1", tbl, flags=re.S)
+        # A paragraph whose ONLY content is a formula (oMath right after pPr, with no
+        # text run) is shown by Word as a CENTERED display equation, ignoring jc. This
+        # hits the first pseudocode line when it is a pure formula. Prepend a
+        # zero-width space run so the paragraph has text content and Word keeps the
+        # formula inline, following the cell's left alignment.
+        zwsp = '<w:r><w:t xml:space="preserve">' + chr(0x200B) + '</w:t></w:r>'  # zero-width space
+        tbl = re.sub(r"(</w:pPr>)\s*(<m:oMath>)", r"\1" + zwsp + r"\2", tbl)
         # Force LEFT (the template "Table" style is centered) and close the box.
         extra = '<w:jc w:val="left"/>'
         if "<w:tblBorders>" not in tbl:
