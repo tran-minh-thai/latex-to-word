@@ -6,6 +6,9 @@
 \usepackage{amssymb}
 \usepackage{amsthm}
 \newtheorem{lemma}{Lemma}
+\usepackage{graphicx}
+\graphicspath{{figures/}}
+\usepackage{booktabs}
 \usepackage{algorithm}
 \usepackage[noend]{algpseudocode}
 \usepackage{hyperref}
@@ -20,11 +23,13 @@
 \begin{abstract}
 This short paper exists only to demonstrate the LaTeX to Word converter. It uses
 numbered equations, two pseudocode algorithms with pruning (Apriori frequent-itemset
-mining and association-rule generation), a lemma, cross references and two citations.
+mining and association-rule generation), a lemma, a figure, a table, cross
+references to all of them, and two citations.
 \end{abstract}
 
 \input{introduction}
 \input{method}
+\input{experiment}
 
 \bibliographystyle{IEEEtran}
 \bibliography{references}

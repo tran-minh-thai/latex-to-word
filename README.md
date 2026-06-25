@@ -88,9 +88,10 @@ reference.docx        Word style template (Title, Subtitle, Figure, Table, ...)
 example/              minimal runnable sample paper
 ```
 
-The `example/` folder is a small, self-contained paper (title, abstract, a
-numbered equation, an algorithm, cross references and two citations). It already
-ships with the `.aux` and `.bbl` files, so you can run the converter on it right
+The `example/` folder is a small, self-contained paper (title, abstract, numbered
+equations, two pseudocode algorithms with pruning, a lemma, a figure, a table, and
+cross references to all of them plus two citations). It already ships with the
+`.aux` and `.bbl` files and the figure, so you can run the converter on it right
 away. Point `-d` at your own LaTeX project to convert your paper instead.
 
 ## How the template works

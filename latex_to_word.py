@@ -337,8 +337,10 @@ def inject_ieee_references(text, base, main, year_after_authors=False):
         return _fmt_cite_numbers(nums) if nums else m.group(0)
     text = re.sub(r"\\cite\s*\{([^}]*)\}", cite_repl, text)
 
-    # 3) Build the References section in assigned-number order.
-    lines = ["\\section*{References}\n"]
+    # 3) Build the References section in assigned-number order. The @@NONUM@@ marker
+    #    tells postprocess_docx to suppress numbering on this heading (the template
+    #    auto-numbers Heading 1, but "References" should stay unnumbered).
+    lines = ["\\section*{@@NONUM@@References}\n"]
     missing_entry, missing_doi = [], []
     for key in order:
         n = cite_map[key]
@@ -644,32 +646,78 @@ def convert_algorithms(text, labels):
     return re.sub(r"\\begin\{algorithm\}.*?\\end\{algorithm\}", repl, text, flags=re.S)
 
 
+_RULE = 'w:val="single" w:sz="6" w:space="0" w:color="auto"'
+
+
+def _insert_in_tblpr(tbl, xml):
+    """Insert xml into the table's tblPr, after <w:tblW/> (a safe OOXML position)."""
+    new = re.sub(r"(<w:tblW\b[^>]*/>)", r"\1" + xml, tbl, count=1)
+    return new if new != tbl else tbl.replace("</w:tblPr>", xml + "</w:tblPr>", 1)
+
+
+def _header_row_rule(tbl):
+    """Add a bottom rule to every cell of the table's first row (the header rule)."""
+    fr = re.search(r"<w:tr\b.*?</w:tr>", tbl, re.S)
+    if not fr:
+        return tbl
+    row = fr.group(0)
+    tcb = f'<w:tcBorders><w:bottom {_RULE}/></w:tcBorders>'
+
+    def add(cell):
+        c = cell.group(0)
+        if "<w:tcBorders>" in c:
+            return c
+        if "<w:tcPr>" in c:
+            return c.replace("</w:tcPr>", tcb + "</w:tcPr>", 1)
+        return re.sub(r"(<w:tc>)", r"\1<w:tcPr>" + tcb + "</w:tcPr>", c, count=1)
+    new_row = re.sub(r"<w:tc>.*?</w:tc>", add, row, flags=re.S)
+    return tbl.replace(row, new_row, 1)
+
+
 def _center_table(m):
-    """Center one table, unless it is an algorithm table (marked with @@ALGTBL@@),
-    which must stay left-aligned. pandoc left-aligns tables and ignores LaTeX
-    \\centering, so we set the alignment here."""
+    """Style one table. Algorithm tables (marked @@ALGTBL@@) stay left-aligned with a
+    single closing rule. Content tables are centered and get booktabs-style rules:
+    a top rule, a rule under the header row, and a bottom rule. pandoc left-aligns
+    tables, ignores \\centering and draws no rules, so we set all of this here."""
     tbl = m.group(0)
     if "@@ALGTBL@@" in tbl:                      # algorithm body
         tbl = tbl.replace("@@ALGTBL@@", "")
-        # Force LEFT: the template's "Table" style sets jc=center, which an algorithm
-        # table would otherwise inherit. Also add a bottom rule to close the box.
-        # OOXML order inside tblPr: tblW, jc, ..., tblBorders, ...
+        # Force LEFT (the template "Table" style is centered) and close the box.
         extra = '<w:jc w:val="left"/>'
         if "<w:tblBorders>" not in tbl:
-            extra += ('<w:tblBorders><w:bottom w:val="single" w:sz="6" w:space="0" '
-                      'w:color="auto"/></w:tblBorders>')
-        new = re.sub(r"(<w:tblW\b[^>]*/>)", r"\1" + extra, tbl, count=1)
-        tbl = new if new != tbl else tbl.replace("</w:tblPr>", extra + "</w:tblPr>", 1)
-        return tbl
+            extra += f'<w:tblBorders><w:bottom {_RULE}/></w:tblBorders>'
+        return _insert_in_tblpr(tbl, extra)
 
-    def add_jc(pm):
-        block = pm.group(0)
-        if "<w:jc " in block:                    # already has a table justification
-            return block
-        new = re.sub(r"(<w:tblW\b[^>]*/>)", r'\1<w:jc w:val="center"/>', block, count=1)
-        return new if new != block else block.replace(
-            "</w:tblPr>", '<w:jc w:val="center"/></w:tblPr>', 1)
-    return re.sub(r"<w:tblPr>.*?</w:tblPr>", add_jc, tbl, count=1, flags=re.S)
+    # Content table: center it, add top/bottom rules and a header rule.
+    extra = ""
+    if "<w:jc " not in re.search(r"<w:tblPr>.*?</w:tblPr>", tbl, re.S).group(0):
+        extra += '<w:jc w:val="center"/>'
+    if "<w:tblBorders>" not in tbl:
+        extra += f'<w:tblBorders><w:top {_RULE}/><w:bottom {_RULE}/></w:tblBorders>'
+    if extra:
+        tbl = _insert_in_tblpr(tbl, extra)
+    return _header_row_rule(tbl)
+
+
+def _suppress_heading_numbering(s):
+    """Suppress automatic numbering on any heading marked @@NONUM@@ (the generated
+    References heading): the template numbers Heading 1, but References should not be
+    numbered. numId=0 removes the paragraph from the heading's number list."""
+    nonum = '<w:numPr><w:ilvl w:val="0"/><w:numId w:val="0"/></w:numPr>'
+
+    def fix(m):
+        p = m.group(0)
+        if "@@NONUM@@" not in p:
+            return p
+        if "<w:pStyle " in p:
+            p = re.sub(r"(<w:pStyle\b[^>]*/>)", r"\1" + nonum, p, count=1)
+        elif "<w:pPr>" in p:
+            p = p.replace("<w:pPr>", "<w:pPr>" + nonum, 1)
+        else:
+            p = re.sub(r"(<w:p\b[^>]*>)", r"\1<w:pPr>" + nonum + "</w:pPr>", p, count=1)
+        return p.replace("@@NONUM@@", "")
+
+    return re.sub(r"<w:p\b.*?</w:p>", fix, s, flags=re.S)
 
 
 def _style_algorithm_borders(s):
@@ -775,6 +823,7 @@ def postprocess_docx(path):
                         c = s.count(f'w:val="{a}"')
                         if c:
                             s = s.replace(f'w:val="{a}"', f'w:val="{b}"'); changed += c
+                    s = _suppress_heading_numbering(s)
                     s, algos = _style_algorithm_borders(s)
                     before = s.count('<w:jc w:val="center"')
                     s = re.sub(r"<w:tbl>.*?</w:tbl>", _center_table, s, flags=re.S)
@@ -949,7 +998,8 @@ def main():
             seen.append(d)
     cmd += [
         "--resource-path", os.pathsep.join(seen),
-        "--number-sections",
+        # No --number-sections: the Word template's heading styles number the
+        # headings automatically, so letting pandoc number them too would double up.
         "-o", out_path,
     ]
     if os.path.exists(ref_target):                      # optional Word template

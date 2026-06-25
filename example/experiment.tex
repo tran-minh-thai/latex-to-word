@@ -1,0 +1,37 @@
+\section{Experiments}
+\label{sec:experiment}
+We run Algorithm~\ref{alg:apriori} on a synthetic transaction database and vary the
+minimum support $\sigma$. Figure~\ref{fig:runtime} shows that the runtime drops
+sharply as $\sigma$ increases, because the pruning of Lemma~\ref{lem:apriori}
+removes more candidates early. For comparison we also plot the FP-growth baseline
+\cite{Han2000}.
+
+\begin{figure}[ht]
+\centering
+\includegraphics[width=0.7\linewidth]{runtime_apriori.png}
+\caption{Mining runtime versus the minimum support threshold.}
+\label{fig:runtime}
+\end{figure}
+
+Table~\ref{tab:results} reports, for each support threshold, the number of frequent
+itemsets and association rules produced by Algorithm~\ref{alg:rules}.
+
+\begin{table}[ht]
+\centering
+\caption{Frequent itemsets and rules found at each support threshold.}
+\label{tab:results}
+\begin{tabular}{rrr}
+\toprule
+\textbf{Support (\%)} & \textbf{Frequent itemsets} & \textbf{Rules} \\
+\midrule
+1  & 312 & 1045 \\
+2  & 148 & 392 \\
+5  & 47  & 86 \\
+10 & 13  & 18 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+As summarised in Figure~\ref{fig:runtime} and Table~\ref{tab:results}, a higher
+support threshold yields fewer patterns and faster mining, which matches the
+pruning behaviour analysed in Section~\ref{sec:method}.
