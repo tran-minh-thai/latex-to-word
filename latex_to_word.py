@@ -430,11 +430,13 @@ def resolve_refs(text, labels):
 
 
 def number_equations(text, labels):
-    """Show the number (n) to the right of each displayed equation.
+    """Number each displayed equation the way Word does it natively (no table).
 
-    pandoc/texmath ignores \\tag in the OMML output, so each equation is placed in
-    a borderless two-column table: the formula ($\\displaystyle ...$) on the left
-    and the right-aligned number on the right, the usual Word layout."""
+    The equation is emitted as inline display math followed by a marker
+    (@@EQ:n@@). pandoc keeps it in a single paragraph; postprocess_docx then turns
+    the marker into a right-aligned tab + "(n)", which is exactly how Word stores a
+    "#"-numbered equation: the formula centered and the number at the right margin.
+    (pandoc/texmath ignores \\tag, so it cannot be used here.)"""
     def repl(m):
         body = m.group(1)
         lm = re.search(r"\\label\{([^}]*)\}", body)
@@ -444,10 +446,7 @@ def number_equations(text, labels):
         body = re.sub(r"\s+", " ", body).strip()
         if not num:                                   # unlabeled equation: keep as is
             return "\\begin{equation}" + m.group(1) + "\\end{equation}"
-        return ("\n\n\\begin{center}\n"
-                "\\begin{tabular}{@{}p{0.85\\linewidth}r@{}}\n"
-                "$\\displaystyle " + body + "$ & (" + num + ")\n"
-                "\\end{tabular}\n\\end{center}\n\n")
+        return "\n\n$\\displaystyle " + body + "$ @@EQ:" + num + "@@\n\n"
     return re.sub(r"\\begin\{equation\}(.*?)\\end\{equation\}", repl, text, flags=re.S)
 
 
@@ -593,22 +592,37 @@ def pseudocode_to_lines(body):
 
 
 def _format_algorithm(num, caption, lines):
-    """Render one algorithm as a heading plus a borderless two-column table
-    (line number | code), one row per line.
+    """Render one algorithm as a left-aligned header (the "Algorithm N" heading plus
+    the Input/Output lines, flush left, with a rule above and below) followed by a
+    borderless two-column table of numbered steps (line number | code), one row per
+    line.
 
-    A table is used instead of manual line breaks because it guarantees that every
-    line stays on its own line in Word, Google Docs and LibreOffice, while inline
-    math is still rendered as a real equation in each cell."""
-    head = f"\\noindent\\textbf{{Algorithm {num}: {caption}}}"
+    A table is used for the steps because it guarantees that every line stays on its
+    own line in Word, Google Docs and LibreOffice, while inline math is rendered as a
+    real equation in each cell. The @@ALG...@@ markers tell postprocess_docx where to
+    draw the borders and which table to keep left-aligned; they are then removed."""
+    header = [f"\\textbf{{Algorithm {num}: {caption}}}"]
+    header += [text for (label, level, text) in lines if not label]   # Input: / Output:
+    steps = [(label, level, text) for (label, level, text) in lines if label]
+
+    paras = []
+    for i, h in enumerate(header):
+        mark = ("@@ALGTOP@@" if i == 0 else "") + ("@@ALGBOT@@" if i == len(header) - 1 else "")
+        # No space between the marker and the text, so no stray space is left after
+        # the marker is stripped in post-processing.
+        paras.append("\\noindent " + mark + h)
+    header_latex = "\n\n".join(paras)
+
     rows = []
-    for label, level, text in lines:
+    for j, (label, level, text) in enumerate(steps):
         indent = "~" * (2 * level)                      # nested blocks: non-breaking spaces
         cell = (indent + text).replace("&", "\\&")      # '&' is the column separator
-        rows.append(f"{label} & {cell}")
+        tag = "@@ALGTBL@@" if j == 0 else ""            # marks the table as an algorithm
+        rows.append(f"{tag}{label} & {cell}")
     table = ("\\begin{longtable}[]{@{}p{0.07\\linewidth}p{0.9\\linewidth}@{}}\n"
              + " \\\\\n".join(rows) + " \\\\\n"
              + "\\end{longtable}")
-    return "\n\n" + head + "\n\n" + table + "\n\n"
+    return "\n\n" + header_latex + "\n\n" + table + "\n\n"
 
 
 def convert_algorithms(text, labels):
@@ -630,16 +644,106 @@ def convert_algorithms(text, labels):
     return re.sub(r"\\begin\{algorithm\}.*?\\end\{algorithm\}", repl, text, flags=re.S)
 
 
-def _center_tblpr(m):
-    """Add <w:jc w:val="center"/> to a table's properties if it is not there yet.
-    pandoc left-aligns tables and ignores LaTeX \\centering, so we set it here."""
-    block = m.group(0)
-    if "<w:jc " in block:
+def _center_table(m):
+    """Center one table, unless it is an algorithm table (marked with @@ALGTBL@@),
+    which must stay left-aligned. pandoc left-aligns tables and ignores LaTeX
+    \\centering, so we set the alignment here."""
+    tbl = m.group(0)
+    if "@@ALGTBL@@" in tbl:                      # algorithm body
+        tbl = tbl.replace("@@ALGTBL@@", "")
+        # Force LEFT: the template's "Table" style sets jc=center, which an algorithm
+        # table would otherwise inherit. Also add a bottom rule to close the box.
+        # OOXML order inside tblPr: tblW, jc, ..., tblBorders, ...
+        extra = '<w:jc w:val="left"/>'
+        if "<w:tblBorders>" not in tbl:
+            extra += ('<w:tblBorders><w:bottom w:val="single" w:sz="6" w:space="0" '
+                      'w:color="auto"/></w:tblBorders>')
+        new = re.sub(r"(<w:tblW\b[^>]*/>)", r"\1" + extra, tbl, count=1)
+        tbl = new if new != tbl else tbl.replace("</w:tblPr>", extra + "</w:tblPr>", 1)
+        return tbl
+
+    def add_jc(pm):
+        block = pm.group(0)
+        if "<w:jc " in block:                    # already has a table justification
+            return block
+        new = re.sub(r"(<w:tblW\b[^>]*/>)", r'\1<w:jc w:val="center"/>', block, count=1)
+        return new if new != block else block.replace(
+            "</w:tblPr>", '<w:jc w:val="center"/></w:tblPr>', 1)
+    return re.sub(r"<w:tblPr>.*?</w:tblPr>", add_jc, tbl, count=1, flags=re.S)
+
+
+def _style_algorithm_borders(s):
+    """Add a top rule above the algorithm heading (@@ALGTOP@@) and a bottom rule
+    below the last header line (@@ALGBOT@@), then remove the markers. Returns
+    (new_xml, count_of_algorithms)."""
+    top = '<w:top w:val="single" w:sz="6" w:space="2" w:color="auto"/>'
+    bottom = '<w:bottom w:val="single" w:sz="6" w:space="2" w:color="auto"/>'
+    count = [0]
+
+    def fix(m):
+        p = m.group(0)
+        has_top, has_bot = "@@ALGTOP@@" in p, "@@ALGBOT@@" in p
+        if not (has_top or has_bot):
+            return p
+        if has_top:
+            count[0] += 1
+        pbdr = "<w:pBdr>" + (top if has_top else "") + (bottom if has_bot else "") + "</w:pBdr>"
+        if "<w:pStyle " in p:                    # OOXML order: pBdr right after pStyle is valid
+            p = re.sub(r"(<w:pStyle\b[^>]*/>)", r"\1" + pbdr, p, count=1)
+        elif "<w:pPr>" in p:
+            p = p.replace("<w:pPr>", "<w:pPr>" + pbdr, 1)
+        else:
+            p = re.sub(r"(<w:p\b[^>]*>)", r"\1<w:pPr>" + pbdr + "</w:pPr>", p, count=1)
+        return p.replace("@@ALGTOP@@", "").replace("@@ALGBOT@@", "")
+
+    return re.sub(r"<w:p\b.*?</w:p>", fix, s, flags=re.S), count[0]
+
+
+def _text_width_twips(s):
+    """Usable text width (page width minus left/right margins) in twips, from the
+    section properties. Falls back to a sensible A4 default."""
+    sect = re.search(r"<w:sectPr.*?</w:sectPr>", s, re.S)
+    if sect:
+        pg = re.search(r'<w:pgSz\b[^>]*\bw:w="(\d+)"', sect.group(0))
+        mar = re.search(r"<w:pgMar\b[^>]*/>", sect.group(0))
+        if pg and mar:
+            left = re.search(r'\bw:left="(\d+)"', mar.group(0))
+            right = re.search(r'\bw:right="(\d+)"', mar.group(0))
+            if left and right:
+                return int(pg.group(1)) - int(left.group(1)) - int(right.group(1))
+    return 9026     # A4 with ~1 inch margins
+
+
+def _apply_equation_numbers(s):
+    """Turn each @@EQ:n@@ marker into a Word-native numbered equation: the formula
+    centered and "(n)" right-aligned, using tab stops (no table). Returns
+    (new_xml, count)."""
+    width = _text_width_twips(s)
+    tabs = (f'<w:tabs><w:tab w:val="center" w:pos="{width // 2}"/>'
+            f'<w:tab w:val="right" w:pos="{width}"/></w:tabs>')
+    count = [0]
+
+    def fix(p):
+        block = p.group(0)
+        if "@@EQ:" not in block:
+            return block
+        count[0] += 1
+        # 1) add the tab stops to the paragraph properties (create pPr if missing)
+        if "<w:pPr>" in block:
+            block = block.replace("</w:pPr>", tabs + "</w:pPr>", 1)
+        else:
+            block = re.sub(r"(<w:p\b[^>]*>)", r"\1<w:pPr>" + tabs + "</w:pPr>", block, count=1)
+        # 2) a leading center tab so the formula is centered on the page
+        block = re.sub(r"(</w:pPr>)\s*(<m:oMath>)", r"\1<w:r><w:tab/></w:r>\2", block, count=1)
+        # 3) the marker run (and the lone space run before it) -> right tab + "(n)"
+        block = re.sub(
+            r'(?:<w:r>(?:<w:rPr>.*?</w:rPr>)?<w:t[^>]*>\s*</w:t></w:r>)?'
+            r'<w:r>(?:<w:rPr>.*?</w:rPr>)?<w:t[^>]*>\s*@@EQ:(\d+)@@\s*</w:t></w:r>',
+            r'<w:r><w:tab/></w:r><w:r><w:t>(\1)</w:t></w:r>', block, count=1, flags=re.S)
         return block
-    # Insert after <w:tblW .../> (correct OOXML order: tblW, jc, tblLayout, ...).
-    new = re.sub(r"(<w:tblW\b[^>]*/>)", r'\1<w:jc w:val="center"/>', block, count=1)
-    return new if new != block else block.replace(
-        "</w:tblPr>", '<w:jc w:val="center"/></w:tblPr>', 1)
+
+    s = re.sub(r"<w:p\b.*?</w:p>", fix, s, flags=re.S)
+    return s, count[0]
 
 
 def postprocess_docx(path):
@@ -649,13 +753,18 @@ def postprocess_docx(path):
           Figure caption : ImageCaption -> Figure
           Table caption  : TableCaption -> Table
           Author / Date  : Author, Date -> Subtitle (template has no such styles)
-      - Center every table (pandoc left-aligns tables and ignores \\centering).
+      - Add a rule above each algorithm heading and below its Input/Output header.
+      - Center content tables, but keep algorithm tables left-aligned (pandoc
+        left-aligns tables and ignores \\centering).
+      - Turn the @@EQ:n@@ markers into right-aligned equation numbers (no table).
     """
     remap = {"ImageCaption": "Figure", "TableCaption": "Table",
              "Author": "Subtitle", "Date": "Subtitle"}
     tmp = path + ".tmp"
     changed = 0
     centered = 0
+    numbered = 0
+    algos = 0
     try:
         with zipfile.ZipFile(path) as zin, zipfile.ZipFile(tmp, "w", zipfile.ZIP_DEFLATED) as zout:
             for item in zin.infolist():
@@ -666,16 +775,22 @@ def postprocess_docx(path):
                         c = s.count(f'w:val="{a}"')
                         if c:
                             s = s.replace(f'w:val="{a}"', f'w:val="{b}"'); changed += c
+                    s, algos = _style_algorithm_borders(s)
                     before = s.count('<w:jc w:val="center"')
-                    s = re.sub(r"<w:tblPr>.*?</w:tblPr>", _center_tblpr, s, flags=re.S)
+                    s = re.sub(r"<w:tbl>.*?</w:tbl>", _center_table, s, flags=re.S)
                     centered = s.count('<w:jc w:val="center"') - before
+                    s, numbered = _apply_equation_numbers(s)
                     data = s.encode("utf-8")
                 zout.writestr(item, data)
         shutil.move(tmp, path)
         if changed:
             print(f"  (post-processing: remapped {changed} paragraphs to Figure/Table/Subtitle)")
+        if algos:
+            print(f"  (post-processing: framed {algos} algorithm header(s) with top/bottom rules)")
         if centered:
-            print(f"  (post-processing: centered {centered} table(s))")
+            print(f"  (post-processing: centered {centered} content table(s))")
+        if numbered:
+            print(f"  (post-processing: numbered {numbered} equation(s) with a right-aligned tab)")
     except Exception as e:
         if os.path.exists(tmp):
             os.remove(tmp)
@@ -714,11 +829,12 @@ def print_review_checklist(source_text, missing_doi, missing_entry, unresolved_r
             "Theorem/Lemma/Definition blocks become plain paragraphs. Their label and number "
             "(e.g. \"Theorem 1.\") are not added automatically; add them by hand if your style needs them.")
     reminders.append(
-        "Displayed equation numbers sit in a borderless one-row table. Check the alignment and that "
-        "wide formulas are not clipped on the page.")
+        "Displayed equation numbers use a right-aligned tab (Word's native style): the formula is "
+        "centered and the number sits at the right margin. Check the alignment, especially for wide formulas.")
     reminders.append(
-        "Pseudocode is rendered as a borderless two-column table (line number | code). Check the "
-        "indentation and that long formulas do not wrap awkwardly.")
+        "Pseudocode has a left-aligned header (heading, Input, Output) framed by a top and bottom "
+        "rule, with the steps in a two-column table (line number | code). Check the indentation and "
+        "that long formulas do not wrap awkwardly.")
     reminders.append(
         "Check figure size and placement, and table column widths; pandoc uses default sizing.")
     reminders.append(

@@ -13,9 +13,12 @@ The script handles the cases pandoc does not cover on its own:
 - **Cross references.** `\ref` and `\eqref` are replaced by the numbers LaTeX
   already computed, read from the `.aux` file (so `Algorithm~\ref{...}` becomes
   `Algorithm 3`, `Eq.~\eqref{...}` becomes `Eq. (2)`, and so on).
-- **Equations.** Displayed equations keep their number on the right margin.
-  Pseudocode (`algorithm` / `algorithmic`) becomes a borderless, numbered
-  two-column table (one row per line) so every line stays separate, while the
+- **Equations.** Displayed equations are centered and numbered with the number at
+  the right margin, using a right-aligned tab (Word's native equation-numbering
+  layout, not a table).
+  Pseudocode (`algorithm` / `algorithmic`) gets a left-aligned header (heading,
+  Input, Output) framed by a top and bottom rule, followed by the numbered steps in
+  a two-column table (one row per line) so every line stays separate, while the
   inline math is preserved as real Word equations.
 - **Figures.** Figures are found through `\graphicspath` and embedded as PNG.
 - **Word styles.** When a template is supplied, pandoc uses it, the tables are
