@@ -14,12 +14,13 @@ The script handles the cases pandoc does not cover on its own:
   already computed, read from the `.aux` file (so `Algorithm~\ref{...}` becomes
   `Algorithm 3`, `Eq.~\eqref{...}` becomes `Eq. (2)`, and so on).
 - **Equations.** Displayed equations keep their number on the right margin.
-  Pseudocode (`algorithm` / `algorithmic`) is turned into numbered lines while the
+  Pseudocode (`algorithm` / `algorithmic`) becomes a borderless, numbered
+  two-column table (one row per line) so every line stays separate, while the
   inline math is preserved as real Word equations.
 - **Figures.** Figures are found through `\graphicspath` and embedded as PNG.
-- **Word styles.** When a template is supplied, pandoc uses it, and the
-  auto-generated paragraph styles (figure/table captions, author, date) are mapped
-  onto the template styles.
+- **Word styles.** When a template is supplied, pandoc uses it, the tables are
+  centered, and the auto-generated paragraph styles (figure/table captions, author,
+  date) are mapped onto the template styles.
 
 ## Requirements
 
@@ -97,6 +98,11 @@ the heading styles. To change the look of the output, edit those styles in
 `reference.docx` (or supply your own template with `-t`) and run the converter
 again. The script copies the chosen template into the paper folder as
 `reference.docx` before calling pandoc.
+
+## Feedback
+
+Comments, bug reports and suggestions are welcome. Please open an issue on GitHub
+or send an email to thaitm@huflit.edu.vn.
 
 ## License
 

@@ -8,12 +8,14 @@
 \providecommand{\BIBdecl}{\relax}
 \BIBdecl
 
-\bibitem{Smith2020}
-J.~Smith and J.~Doe, ``A survey of sequential pattern mining,'' \emph{Journal of
-  Examples}, vol.~10, no.~2, pp. 100--120, 2020.
+\bibitem{Agrawal1994}
+R.~Agrawal and R.~Srikant, ``Fast algorithms for mining association rules in
+  large databases,'' in \emph{Proceedings of the 20th International Conference on
+  Very Large Data Bases (VLDB)}, 1994, pp. 487--499.
 
-\bibitem{Jones2018}
-A.~Jones, ``An efficient baseline algorithm,'' in \emph{Proceedings of the
-  Example Conference}, 2018, pp. 1--10.
+\bibitem{Han2000}
+J.~Han, J.~Pei, and Y.~Yin, ``Mining frequent patterns without candidate
+  generation,'' in \emph{Proceedings of the 2000 ACM SIGMOD International
+  Conference on Management of Data}, 2000, pp. 1--12.
 
 \end{thebibliography}

@@ -1,3 +1,6 @@
 \section{Introduction}
-Sequential data mining has many applications \cite{Smith2020}. A common baseline
-is the algorithm of \cite{Jones2018}, which we revisit in Section~\ref{sec:method}.
+Association rule mining discovers frequent itemsets and rules in transaction
+databases \cite{Agrawal1994}. The Apriori principle, namely that every subset of a
+frequent itemset is frequent, enables effective candidate pruning; later methods
+such as FP-growth avoid candidate generation altogether \cite{Han2000}. This note
+summarises a pruning-based formulation in Section~\ref{sec:method}.

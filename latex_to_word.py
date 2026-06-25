@@ -72,6 +72,8 @@ Notes on fidelity
 - Custom theorem-like environments (Definition/Lemma/Theorem ...) become plain
   paragraphs; their label and number ("Definition 1.") may need a manual touch up
   in Word.
+
+Feedback: comments and suggestions are welcome at thaitm@huflit.edu.vn
 """
 import argparse
 import glob
@@ -455,8 +457,10 @@ def number_equations(text, labels):
 # =========================================================================
 def _alg_inline(s):
     """Normalize the content of one pseudocode line into LaTeX for pandoc:
-    only \\Call{f}{x} becomes f(x); $...$, \\textbf, \\textsc and \\emph are kept
-    untouched (pandoc renders the math and the bold/small-caps text itself)."""
+    \\Call{f}{x} becomes f(x) and a mid-line \\Return becomes "return"; $...$,
+    \\textbf, \\textsc and \\emph are kept untouched (pandoc renders the math and
+    the bold/small-caps text itself)."""
+    s = re.sub(r"\\Return\b", "return", s)     # \Return used inside a \State line
     out, i = [], 0
     while i < len(s):
         j = s.find("\\Call", i)
@@ -589,14 +593,22 @@ def pseudocode_to_lines(body):
 
 
 def _format_algorithm(num, caption, lines):
-    """Build a single LaTeX paragraph for one algorithm: lines are joined with \\\\
-    so pandoc keeps them in one block, and indentation uses non-breaking spaces (~)."""
+    """Render one algorithm as a heading plus a borderless two-column table
+    (line number | code), one row per line.
+
+    A table is used instead of manual line breaks because it guarantees that every
+    line stays on its own line in Word, Google Docs and LibreOffice, while inline
+    math is still rendered as a real equation in each cell."""
     head = f"\\noindent\\textbf{{Algorithm {num}: {caption}}}"
-    rows = [head]
+    rows = []
     for label, level, text in lines:
-        indent = "~~" * level
-        rows.append((f"{label}~{indent}{text}") if label else f"{indent}{text}")
-    return "\n\n" + " \\\\\n".join(rows) + "\n\n"
+        indent = "~" * (2 * level)                      # nested blocks: non-breaking spaces
+        cell = (indent + text).replace("&", "\\&")      # '&' is the column separator
+        rows.append(f"{label} & {cell}")
+    table = ("\\begin{longtable}[]{@{}p{0.07\\linewidth}p{0.9\\linewidth}@{}}\n"
+             + " \\\\\n".join(rows) + " \\\\\n"
+             + "\\end{longtable}")
+    return "\n\n" + head + "\n\n" + table + "\n\n"
 
 
 def convert_algorithms(text, labels):
@@ -618,18 +630,32 @@ def convert_algorithms(text, labels):
     return re.sub(r"\\begin\{algorithm\}.*?\\end\{algorithm\}", repl, text, flags=re.S)
 
 
+def _center_tblpr(m):
+    """Add <w:jc w:val="center"/> to a table's properties if it is not there yet.
+    pandoc left-aligns tables and ignores LaTeX \\centering, so we set it here."""
+    block = m.group(0)
+    if "<w:jc " in block:
+        return block
+    # Insert after <w:tblW .../> (correct OOXML order: tblW, jc, tblLayout, ...).
+    new = re.sub(r"(<w:tblW\b[^>]*/>)", r'\1<w:jc w:val="center"/>', block, count=1)
+    return new if new != block else block.replace(
+        "</w:tblPr>", '<w:jc w:val="center"/></w:tblPr>', 1)
+
+
 def postprocess_docx(path):
-    """Map the paragraph styles pandoc generates onto the template styles by a plain
-    string replacement in document.xml (the target styles already exist in
-    reference.docx):
-      - Figure caption : ImageCaption -> Figure
-      - Table caption  : TableCaption -> Table
-      - Author / Date  : Author, Date -> Subtitle (reference.docx has no such styles)
+    """Adjust the .docx pandoc produced (plain string edits on document.xml):
+      - Map auto-generated paragraph styles onto the template styles (these styles
+        already exist in reference.docx):
+          Figure caption : ImageCaption -> Figure
+          Table caption  : TableCaption -> Table
+          Author / Date  : Author, Date -> Subtitle (template has no such styles)
+      - Center every table (pandoc left-aligns tables and ignores \\centering).
     """
     remap = {"ImageCaption": "Figure", "TableCaption": "Table",
              "Author": "Subtitle", "Date": "Subtitle"}
     tmp = path + ".tmp"
     changed = 0
+    centered = 0
     try:
         with zipfile.ZipFile(path) as zin, zipfile.ZipFile(tmp, "w", zipfile.ZIP_DEFLATED) as zout:
             for item in zin.infolist():
@@ -640,11 +666,16 @@ def postprocess_docx(path):
                         c = s.count(f'w:val="{a}"')
                         if c:
                             s = s.replace(f'w:val="{a}"', f'w:val="{b}"'); changed += c
+                    before = s.count('<w:jc w:val="center"')
+                    s = re.sub(r"<w:tblPr>.*?</w:tblPr>", _center_tblpr, s, flags=re.S)
+                    centered = s.count('<w:jc w:val="center"') - before
                     data = s.encode("utf-8")
                 zout.writestr(item, data)
         shutil.move(tmp, path)
         if changed:
             print(f"  (post-processing: remapped {changed} paragraphs to Figure/Table/Subtitle)")
+        if centered:
+            print(f"  (post-processing: centered {centered} table(s))")
     except Exception as e:
         if os.path.exists(tmp):
             os.remove(tmp)
@@ -686,8 +717,8 @@ def print_review_checklist(source_text, missing_doi, missing_entry, unresolved_r
         "Displayed equation numbers sit in a borderless one-row table. Check the alignment and that "
         "wide formulas are not clipped on the page.")
     reminders.append(
-        "Pseudocode is rendered as numbered lines with manual line breaks. Check the indentation and "
-        "that long formulas do not wrap awkwardly.")
+        "Pseudocode is rendered as a borderless two-column table (line number | code). Check the "
+        "indentation and that long formulas do not wrap awkwardly.")
     reminders.append(
         "Check figure size and placement, and table column widths; pandoc uses default sizing.")
     reminders.append(

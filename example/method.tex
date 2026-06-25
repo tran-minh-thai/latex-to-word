@@ -1,24 +1,69 @@
 \section{Method}
 \label{sec:method}
-The score of a set $S$ is the sum of its element weights:
+Let $D$ be a set of transactions over a set of items $I$. The support of an
+itemset $X \subseteq I$ is the fraction of transactions that contain it:
 \begin{equation}
-\label{eq:score}
-f(S) = \sum_{x \in S} w(x).
+\label{eq:support}
+\mathrm{supp}(X) = \frac{|\{t \in D : X \subseteq t\}|}{|D|}.
 \end{equation}
-A set is kept whenever its score passes a threshold, as defined in Eq.~\eqref{eq:score}.
-The full procedure is given in Algorithm~\ref{alg:main}.
+For an association rule $X \Rightarrow Y$, the confidence is the conditional
+support
+\begin{equation}
+\label{eq:conf}
+\mathrm{conf}(X \Rightarrow Y) = \frac{\mathrm{supp}(X \cup Y)}{\mathrm{supp}(X)}.
+\end{equation}
+
+\begin{lemma}[Apriori pruning]
+\label{lem:apriori}
+If an itemset $X$ is frequent, then every subset $X' \subseteq X$ is also frequent.
+Equivalently, if any $(k-1)$-subset of a candidate $k$-itemset is infrequent, the
+candidate cannot be frequent and may be pruned without computing its support.
+\end{lemma}
+
+Algorithm~\ref{alg:apriori} mines all frequent itemsets using the support of
+Eq.~\eqref{eq:support} and the pruning rule of Lemma~\ref{lem:apriori}.
 
 \begin{algorithm}
-\caption{Threshold filter}
-\label{alg:main}
+\caption{Apriori frequent-itemset mining}
+\label{alg:apriori}
 \begin{algorithmic}[1]
-\Require set family $\mathcal{F}$, threshold $\tau$
-\Ensure result set $\mathcal{R}$
+\Require transactions $D$, minimum support $\sigma$
+\Ensure all frequent itemsets $\mathcal{F}$
+\State $L_1 \gets \{\,\{i\} : i \in I,\ \mathrm{supp}(\{i\}) \ge \sigma\,\}$
+\State $\mathcal{F} \gets L_1$; \ $k \gets 2$
+\While{$L_{k-1} \neq \varnothing$}
+    \State $C_k \gets \Call{AprioriGen}{L_{k-1}}$ \Comment{join step}
+    \For{each candidate $c \in C_k$}
+        \If{some $(k-1)$-subset of $c$ is not in $L_{k-1}$}
+            \State remove $c$ from $C_k$ \Comment{prune step (Lemma~\ref{lem:apriori})}
+        \EndIf
+    \EndFor
+    \State $L_k \gets \{\, c \in C_k : \mathrm{supp}(c) \ge \sigma \,\}$
+    \State $\mathcal{F} \gets \mathcal{F} \cup L_k$; \ $k \gets k + 1$
+\EndWhile
+\State \Return $\mathcal{F}$
+\end{algorithmic}
+\end{algorithm}
+
+Given the frequent itemsets, Algorithm~\ref{alg:rules} derives the association
+rules and prunes them with the confidence of Eq.~\eqref{eq:conf}.
+
+\begin{algorithm}
+\caption{Rule generation with confidence pruning}
+\label{alg:rules}
+\begin{algorithmic}[1]
+\Require frequent itemsets $\mathcal{F}$, minimum confidence $\gamma$
+\Ensure association rule set $\mathcal{R}$
 \State $\mathcal{R} \gets \varnothing$
-\For{each $S \in \mathcal{F}$}
-    \If{$f(S) \ge \tau$}
-        \State $\mathcal{R} \gets \mathcal{R} \cup \{S\}$
-    \EndIf
+\For{each itemset $Z \in \mathcal{F}$ with $|Z| \ge 2$}
+    \For{each non-empty proper subset $X \subset Z$}
+        \State $Y \gets Z \setminus X$
+        \If{$\mathrm{conf}(X \Rightarrow Y) \ge \gamma$}
+            \State $\mathcal{R} \gets \mathcal{R} \cup \{X \Rightarrow Y\}$
+        \Else
+            \State prune every rule whose antecedent is a subset of $X$ \Comment{anti-monotone}
+        \EndIf
+    \EndFor
 \EndFor
 \State \Return $\mathcal{R}$
 \end{algorithmic}
