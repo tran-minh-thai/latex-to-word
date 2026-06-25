@@ -609,9 +609,12 @@ def _format_algorithm(num, caption, lines):
 
     paras = []
     for i, h in enumerate(header):
-        mark = ("@@ALGTOP@@" if i == 0 else "") + ("@@ALGBOT@@" if i == len(header) - 1 else "")
-        # No space between the marker and the text, so no stray space is left after
-        # the marker is stripped in post-processing.
+        # @@ALGHDR@@ on every header line (compact spacing); @@ALGTOP@@/@@ALGBOT@@ on
+        # the first/last line (top/bottom rule). No space between marker and text so
+        # nothing is left behind when the markers are stripped in post-processing.
+        mark = "@@ALGHDR@@"
+        mark += "@@ALGTOP@@" if i == 0 else ""
+        mark += "@@ALGBOT@@" if i == len(header) - 1 else ""
         paras.append("\\noindent " + mark + h)
     header_latex = "\n\n".join(paras)
 
@@ -752,28 +755,40 @@ def _suppress_heading_numbering(s):
 
 
 def _style_algorithm_borders(s):
-    """Add a top rule above the algorithm heading (@@ALGTOP@@) and a bottom rule
-    below the last header line (@@ALGBOT@@), then remove the markers. Returns
-    (new_xml, count_of_algorithms)."""
+    """Style the algorithm header paragraphs (heading, Input, Output):
+      - a top rule above the heading (@@ALGTOP@@) and a bottom rule below the last
+        header line (@@ALGBOT@@);
+      - no space before/after on every header line (@@ALGHDR@@) so the header is
+        compact, not spread out by the template's paragraph spacing.
+    Markers are removed. Returns (new_xml, count_of_algorithms).
+
+    OOXML order inside pPr: pStyle, ..., pBdr, ..., spacing, ... so pBdr is emitted
+    before spacing."""
     top = '<w:top w:val="single" w:sz="6" w:space="2" w:color="auto"/>'
     bottom = '<w:bottom w:val="single" w:sz="6" w:space="2" w:color="auto"/>'
+    tight = '<w:spacing w:before="0" w:after="0" w:line="240" w:lineRule="auto"/>'
     count = [0]
 
     def fix(m):
         p = m.group(0)
         has_top, has_bot = "@@ALGTOP@@" in p, "@@ALGBOT@@" in p
-        if not (has_top or has_bot):
+        has_hdr = "@@ALGHDR@@" in p
+        if not (has_top or has_bot or has_hdr):
             return p
         if has_top:
             count[0] += 1
-        pbdr = "<w:pBdr>" + (top if has_top else "") + (bottom if has_bot else "") + "</w:pBdr>"
-        if "<w:pStyle " in p:                    # OOXML order: pBdr right after pStyle is valid
-            p = re.sub(r"(<w:pStyle\b[^>]*/>)", r"\1" + pbdr, p, count=1)
+        add = ""
+        if has_top or has_bot:
+            add += "<w:pBdr>" + (top if has_top else "") + (bottom if has_bot else "") + "</w:pBdr>"
+        if has_hdr:
+            add += tight
+        if "<w:pStyle " in p:
+            p = re.sub(r"(<w:pStyle\b[^>]*/>)", r"\1" + add, p, count=1)
         elif "<w:pPr>" in p:
-            p = p.replace("<w:pPr>", "<w:pPr>" + pbdr, 1)
+            p = p.replace("<w:pPr>", "<w:pPr>" + add, 1)
         else:
-            p = re.sub(r"(<w:p\b[^>]*>)", r"\1<w:pPr>" + pbdr + "</w:pPr>", p, count=1)
-        return p.replace("@@ALGTOP@@", "").replace("@@ALGBOT@@", "")
+            p = re.sub(r"(<w:p\b[^>]*>)", r"\1<w:pPr>" + add + "</w:pPr>", p, count=1)
+        return (p.replace("@@ALGTOP@@", "").replace("@@ALGBOT@@", "").replace("@@ALGHDR@@", ""))
 
     return re.sub(r"<w:p\b.*?</w:p>", fix, s, flags=re.S), count[0]
 
