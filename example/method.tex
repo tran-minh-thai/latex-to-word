@@ -1,0 +1,25 @@
+\section{Method}
+\label{sec:method}
+The score of a set $S$ is the sum of its element weights:
+\begin{equation}
+\label{eq:score}
+f(S) = \sum_{x \in S} w(x).
+\end{equation}
+A set is kept whenever its score passes a threshold, as defined in Eq.~\eqref{eq:score}.
+The full procedure is given in Algorithm~\ref{alg:main}.
+
+\begin{algorithm}
+\caption{Threshold filter}
+\label{alg:main}
+\begin{algorithmic}[1]
+\Require set family $\mathcal{F}$, threshold $\tau$
+\Ensure result set $\mathcal{R}$
+\State $\mathcal{R} \gets \varnothing$
+\For{each $S \in \mathcal{F}$}
+    \If{$f(S) \ge \tau$}
+        \State $\mathcal{R} \gets \mathcal{R} \cup \{S\}$
+    \EndIf
+\EndFor
+\State \Return $\mathcal{R}$
+\end{algorithmic}
+\end{algorithm}

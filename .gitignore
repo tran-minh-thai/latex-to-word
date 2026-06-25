@@ -1,0 +1,34 @@
+# Python
+__pycache__/
+*.pyc
+
+# macOS / editor cruft
+.DS_Store
+
+# Local editor / tooling settings
+.claude/
+.vscode/
+.idea/
+
+# LaTeX build logs.
+# NOTE: *.aux and *.bbl are kept on purpose - the converter reads the resolved
+# reference numbers from .aux and the IEEE-formatted entries from .bbl.
+*.log
+*.blg
+*.out
+*.synctex.gz
+*.fls
+*.fdb_latexmk
+*.toc
+*.lof
+*.lot
+
+# Private working manuscripts: keep your own papers out of the public repo.
+# (Edit or remove this if you do want to publish a particular folder.)
+/paper/
+
+# Converter intermediate file and generated Word documents.
+# The Word template lives at the repository root (reference.docx); the copy the
+# script places inside a paper folder and the produced .docx are generated.
+_*_flat.tex
+example/*.docx

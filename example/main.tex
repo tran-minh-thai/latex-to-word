@@ -1,0 +1,28 @@
+% Minimal example paper for the LaTeX to Word converter.
+\documentclass[12pt,a4paper]{article}
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{algorithm}
+\usepackage[noend]{algpseudocode}
+\usepackage{hyperref}
+
+\title{A Minimal Example Paper}
+\author{Example Author}
+\date{\today}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+This short paper exists only to demonstrate the LaTeX to Word converter. It uses
+a numbered equation, a small algorithm, a cross reference and two citations.
+\end{abstract}
+
+\input{introduction}
+\input{method}
+
+\bibliographystyle{IEEEtran}
+\bibliography{references}
+\end{document}
