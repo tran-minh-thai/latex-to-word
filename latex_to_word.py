@@ -710,6 +710,26 @@ def _center_table(m):
     return _header_row_rule(tbl)
 
 
+def _center_figures(s):
+    """Center every paragraph that holds an image (pandoc leaves figures aligned to
+    the template's body style, which here is justified). Returns (new_xml, count)."""
+    count = [0]
+
+    def fix(m):
+        p = m.group(0)
+        if "<w:drawing" not in p or "<w:jc " in p:
+            return p
+        count[0] += 1
+        jc = '<w:jc w:val="center"/>'
+        if "<w:pStyle " in p:
+            return re.sub(r"(<w:pStyle\b[^>]*/>)", r"\1" + jc, p, count=1)
+        if "<w:pPr>" in p:
+            return p.replace("<w:pPr>", "<w:pPr>" + jc, 1)
+        return re.sub(r"(<w:p\b[^>]*>)", r"\1<w:pPr>" + jc + "</w:pPr>", p, count=1)
+
+    return re.sub(r"<w:p\b.*?</w:p>", fix, s, flags=re.S), count[0]
+
+
 def _suppress_heading_numbering(s):
     """Suppress automatic numbering on any heading marked @@NONUM@@ (the generated
     References heading): the template numbers Heading 1, but References should not be
@@ -813,8 +833,8 @@ def postprocess_docx(path):
           Table caption  : TableCaption -> Table
           Author / Date  : Author, Date -> Subtitle (template has no such styles)
       - Add a rule above each algorithm heading and below its Input/Output header.
-      - Center content tables, but keep algorithm tables left-aligned (pandoc
-        left-aligns tables and ignores \\centering).
+      - Center figures and content tables, but keep algorithm tables left-aligned
+        (pandoc left-aligns figures/tables and ignores \\centering).
       - Turn the @@EQ:n@@ markers into right-aligned equation numbers (no table).
     """
     remap = {"ImageCaption": "Figure", "TableCaption": "Table",
@@ -824,6 +844,7 @@ def postprocess_docx(path):
     centered = 0
     numbered = 0
     algos = 0
+    figs = 0
     try:
         with zipfile.ZipFile(path) as zin, zipfile.ZipFile(tmp, "w", zipfile.ZIP_DEFLATED) as zout:
             for item in zin.infolist():
@@ -835,6 +856,7 @@ def postprocess_docx(path):
                         if c:
                             s = s.replace(f'w:val="{a}"', f'w:val="{b}"'); changed += c
                     s = _suppress_heading_numbering(s)
+                    s, figs = _center_figures(s)
                     s, algos = _style_algorithm_borders(s)
                     before = s.count('<w:jc w:val="center"')
                     s = re.sub(r"<w:tbl>.*?</w:tbl>", _center_table, s, flags=re.S)
@@ -845,6 +867,8 @@ def postprocess_docx(path):
         shutil.move(tmp, path)
         if changed:
             print(f"  (post-processing: remapped {changed} paragraphs to Figure/Table/Subtitle)")
+        if figs:
+            print(f"  (post-processing: centered {figs} figure(s))")
         if algos:
             print(f"  (post-processing: framed {algos} algorithm header(s) with top/bottom rules)")
         if centered:
