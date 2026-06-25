@@ -682,6 +682,12 @@ def _center_table(m):
     tbl = m.group(0)
     if "@@ALGTBL@@" in tbl:                      # algorithm body
         tbl = tbl.replace("@@ALGTBL@@", "")
+        # A cell that contains ONLY a formula can be wrapped by pandoc in a centered
+        # display equation (m:oMathPara) - this happens on some pandoc builds (e.g.
+        # amd64 on Colab) and makes the first, formula-only line look centered.
+        # Unwrap it to inline math so it follows the cell's left alignment.
+        tbl = re.sub(r"<m:oMathPara>(?:<m:oMathParaPr>.*?</m:oMathParaPr>)?"
+                     r"(<m:oMath>.*?</m:oMath>)</m:oMathPara>", r"\1", tbl, flags=re.S)
         # Force LEFT (the template "Table" style is centered) and close the box.
         extra = '<w:jc w:val="left"/>'
         if "<w:tblBorders>" not in tbl:
